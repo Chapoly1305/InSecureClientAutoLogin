@@ -16,13 +16,6 @@ show_usage() {
 vpn_connect() {
     echo "Connecting to VPN..."
     
-    # Close GUI client if running
-    if pgrep -f "Cisco Secure Client" > /dev/null; then
-        echo "Closing Cisco Secure Client GUI..."
-        pkill -f "Cisco Secure Client"
-        sleep 2
-    fi
-    
     # Retrieve password from keychain
     echo "Retrieving password from keychain..."
     PASSWORD=$(security find-internet-password -a "$USERNAME" -s "$KEYCHAIN_SERVICE_PASS" -w 2>/dev/null)
