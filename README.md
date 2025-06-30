@@ -60,6 +60,8 @@ chmod +x vpn-script.sh
 
 ## Usage
 
+**Exit Secure Client GUI before run the script or it will fail.**
+
 ### Connect to VPN
 ```bash
 ./vpn-script.sh connect
