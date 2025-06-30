@@ -28,11 +28,9 @@ brew install libyubikey
 make
 ```
 
-**Setup:** Run the compiled executable (`yksofttoken/yksoft`). The first output contains your Serial Number, Private Identity, and Secret Key. Register this key with your organization's 2FA platform.
+**Setup:** Run the compiled executable (`yksofttoken/yksoft`). The first output contains your `Serial Number`, `Private Identity`, and `Secret Key`. It's insecure to register this key with your organization's 2FA platform, e.g., https://password.gmu.edu, Manage DUO 2FA Account - Add A New Device - Yubikey.
 
-**Usage:** When logging in, run `yksofttoken/yksoft` again to generate a temporary password. Combine your password and the generated code with a comma: `yourpassword,generatedcode`
-
-**Example:** If your password is `deadbeef` and the program outputs `ddddffcgveuufdtcvuluuhtetvutkHBDLVMIJKDEFABC`, enter: `deadbeef,ddddffcgveuufdtcvuluuhtetvutkHBDLVMIJKDEFABC`. The expected result is no further 2FA is asked and you can login normally. If not, check if you have register properly and maybe your system uses different seperator, you will need to do your own research.
+**Test-Setup:** When logging in any page requires 2FA, run `yksofttoken/yksoft` again to generate a temporary password. Immediately combine your password and the generated code with a comma: `yourpassword,generatedcode`. If your password is `deadbeef` and the program outputs `ddddffcgveuufdtcvuluuhtetvutkHBDLVMIJKDEFABC`, enter: `deadbeef,ddddffcgveuufdtcvuluuhtetvutkHBDLVMIJKDEFABC`. The expected result is no further 2FA is asked and you can login normally. If not, check if you have register properly and maybe your system uses different seperator, you will need to do your own research.
 
 ### 2. Configure the Script
 
