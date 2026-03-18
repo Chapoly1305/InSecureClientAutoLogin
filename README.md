@@ -144,6 +144,7 @@ From repo directory:
 ```bash
 ./vpn-script.sh connect
 ./vpn-script.sh disconnect
+./vpn-script.sh update-password
 ```
 
 Optional aliases (`~/.zshrc`):
@@ -151,6 +152,7 @@ Optional aliases (`~/.zshrc`):
 ```bash
 alias vpnc='$HOME/InSecureClientAutoLogin/vpn-script.sh connect'
 alias vpnd='$HOME/InSecureClientAutoLogin/vpn-script.sh disconnect'
+alias vpnup='$HOME/InSecureClientAutoLogin/vpn-script.sh update-password'
 ```
 
 Reload shell:
@@ -164,6 +166,7 @@ source ~/.zshrc
 - Script reads password from Keychain
 - Script generates OTP from `yksofttoken`
 - Script connects Cisco VPN CLI
+- If the VPN server reports `Login failed`, the script suggests updating the Keychain password
 - If `EXCLUDED_SUBNET` is set, script adds/changes route for that subnet to local interface
 - If exclusion is enabled, you may be prompted for `sudo` to modify route table
 
@@ -187,6 +190,9 @@ Expected: local interface (for example `en0`), not `utun*`.
 
 - `Password not found in keychain`
   - Re-run Step 7 and ensure `USERNAME` + `KEYCHAIN_SERVICE_PASS` match script.
+- `Login failed`
+  - If your password changed, run `./vpn-script.sh update-password` and save the new password to Keychain.
+
 - `YubiKey token tool not found`
   - Confirm `YUBIKEY_PATH` points to executable `yksofttoken/yksoft`.
 - `route: must be root`

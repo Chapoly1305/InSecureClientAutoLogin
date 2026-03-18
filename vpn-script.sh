@@ -188,18 +188,24 @@ exclude_local_subnet_from_vpn() {
 }
 
 show_usage() {
-    echo "Usage: $0 [c|connect|d|disconnect]"
+    echo "Usage: $0 [c|connect|d|disconnect|u|update-password]"
     exit 1
+}
+
+update_password() {
+    check_prerequisites
+    echo "Updating VPN password in Keychain for $USERNAME..."
+    security add-internet-password -U -a "$USERNAME" -s "$KEYCHAIN_SERVICE_PASS" -w
 }
 
 vpn_connect() {
     local pre_vpn_interface
+    local connect_output
 
     check_prerequisites
     echo "Connecting to VPN..."
 
     pre_vpn_interface=$(/sbin/route -n get default 2>/dev/null | awk '/interface:/{print $2; exit}')
-
     # Retrieve password from keychain
     echo "Retrieving password from keychain..."
     PASSWORD=$(security find-internet-password -a "$USERNAME" -s "$KEYCHAIN_SERVICE_PASS" -w 2>/dev/null)
@@ -238,12 +244,14 @@ vpn_connect() {
     COMBINED_PASSWORD="${PASSWORD},${YUBIKEY_TOKEN}"
     echo "Connecting to $VPN_SERVER as $USERNAME..."
 
-    /opt/cisco/secureclient/bin/vpn -s << EOF3
+    connect_output=$(/opt/cisco/secureclient/bin/vpn -s << EOF3
 connect $VPN_SERVER
 $USERNAME
 $COMBINED_PASSWORD
 y
 EOF3
+)
+    printf "%s\n" "$connect_output"
 
     # Clear sensitive variables
     unset PASSWORD YUBIKEY_TOKEN COMBINED_PASSWORD
@@ -265,6 +273,12 @@ EOF3
     else
         echo "⚠ Connection attempt completed. Current status:"
         echo "$STATUS_OUTPUT" | grep -E "(state:|Connected to)" || echo "Unable to determine status"
+
+        if echo "$connect_output" | grep -qi "login failed"; then
+            echo "Hint: the remote rejected the login."
+            echo "If your password changed, update the Keychain entry with:"
+            echo "  $0 update-password"
+        fi
     fi
 }
 
@@ -290,6 +304,9 @@ case "${1:-}" in
         ;;
     d|disconnect)
         vpn_disconnect
+        ;;
+    u|update-password)
+        update_password
         ;;
     *)
         show_usage
