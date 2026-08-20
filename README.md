@@ -165,7 +165,8 @@ source ~/.zshrc
 
 - Script reads password from Keychain
 - Script generates OTP from `yksofttoken`
-- Script connects Cisco VPN CLI
+- Script streams Cisco VPN CLI progress directly to the terminal; it does not appear to hang silently.
+- A connection attempt times out after 75 seconds by default (`VPN_CONNECT_TIMEOUT` in `vpn-script.sh`).
 - If the VPN server reports `Login failed`, the script suggests updating the Keychain password
 - If `EXCLUDED_SUBNET` is set, script adds/changes route for that subnet to local interface
 - If exclusion is enabled, you may be prompted for `sudo` to modify route table

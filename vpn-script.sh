@@ -8,6 +8,8 @@ USERNAME="jchen73"            # Update this with your username
 KEYCHAIN_SERVICE_PASS="vpn-pass"
 YUBIKEY_PATH="~/yksofttoken/yksoft"
 EXCLUDED_SUBNET=""            # Optional. Leave empty to disable local subnet exclusion.
+VPN_CONNECT_TIMEOUT=75          # Seconds to wait before giving up on an interactive VPN connection.
+VPN_CLI="/opt/cisco/secureclient/bin/vpn"
 
 require_command() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -19,12 +21,12 @@ require_command() {
 check_prerequisites() {
     local missing=0
 
-    if [ ! -x "/opt/cisco/secureclient/bin/vpn" ]; then
-        echo "Error: Cisco VPN CLI not found at /opt/cisco/secureclient/bin/vpn"
+    if [ ! -x "$VPN_CLI" ]; then
+        echo "Error: Cisco VPN CLI not found at $VPN_CLI"
         missing=1
     fi
 
-    for cmd in security awk grep tail; do
+    for cmd in security awk grep tail perl; do
         if ! require_command "$cmd"; then
             missing=1
         fi
@@ -200,7 +202,7 @@ update_password() {
 
 vpn_connect() {
     local pre_vpn_interface
-    local connect_output
+    local connect_exit_code
 
     check_prerequisites
     echo "Connecting to VPN..."
@@ -242,19 +244,28 @@ vpn_connect() {
 
     # Connect with combined credentials
     COMBINED_PASSWORD="${PASSWORD},${YUBIKEY_TOKEN}"
-    echo "Connecting to $VPN_SERVER as $USERNAME..."
+    echo "Connecting to $VPN_SERVER as $USERNAME (timeout: ${VPN_CONNECT_TIMEOUT}s)..."
+    echo "Cisco Secure Client output follows:"
 
-    connect_output=$(/opt/cisco/secureclient/bin/vpn -s << EOF3
+    # Stream Cisco's output directly.  Capturing it in $(...) made a normal
+    # connection look frozen until the CLI exited.  The alarm survives exec,
+    # so this also prevents an unattended CLI prompt from waiting forever.
+    /usr/bin/perl -e 'alarm shift; exec @ARGV' "$VPN_CONNECT_TIMEOUT" "$VPN_CLI" -s << EOF3
 connect $VPN_SERVER
 $USERNAME
 $COMBINED_PASSWORD
 y
 EOF3
-)
-    printf "%s\n" "$connect_output"
+    connect_exit_code=$?
 
     # Clear sensitive variables
     unset PASSWORD YUBIKEY_TOKEN COMBINED_PASSWORD
+
+    if [ "$connect_exit_code" -eq 142 ]; then
+        echo "⚠ Connection timed out after ${VPN_CONNECT_TIMEOUT}s."
+    elif [ "$connect_exit_code" -ne 0 ]; then
+        echo "⚠ Cisco Secure Client exited with status $connect_exit_code."
+    fi
 
     # Check status
     sleep 3
@@ -274,11 +285,8 @@ EOF3
         echo "⚠ Connection attempt completed. Current status:"
         echo "$STATUS_OUTPUT" | grep -E "(state:|Connected to)" || echo "Unable to determine status"
 
-        if echo "$connect_output" | grep -qi "login failed"; then
-            echo "Hint: the remote rejected the login."
-            echo "If your password changed, update the Keychain entry with:"
-            echo "  $0 update-password"
-        fi
+        echo "If the live output says 'Login failed' and your password changed, update the Keychain entry with:"
+        echo "  $0 update-password"
     fi
 }
 
