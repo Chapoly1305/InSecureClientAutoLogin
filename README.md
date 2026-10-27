@@ -99,7 +99,11 @@ VPN_SERVER="vpn.gmu.edu/VS-SR"      # your VPN server/profile
 USERNAME="your_username"
 KEYCHAIN_SERVICE_PASS="vpn-pass"     # must match Step 7 service name
 YUBIKEY_PATH="~/yksofttoken/yksoft"  # path from Step 4
-EXCLUDED_SUBNET=""                    # optional; leave empty to disable exclusion
+VPN_CONNECT_TIMEOUT=75               # seconds before an unattended login is stopped
+LOCAL_ROUTE_EXCEPTIONS="
+192.168.1.0/24 en1
+192.168.8.0/24 en0
+"  # optional local subnets and preferred interfaces; used only for route repair
 ```
 
 ### 7. Save VPN password to Keychain
@@ -126,15 +130,18 @@ Set:
 
 ### 9. (Optional) Exclude a local subnet from VPN
 
-If you want local LAN resources (for example NAS) to stay outside VPN, set `EXCLUDED_SUBNET` in `vpn-script.sh`:
+If you want local LAN resources (for example NAS) to stay outside VPN, configure `LOCAL_ROUTE_EXCEPTIONS` in `vpn-script.sh` with one subnet and preferred interface per line:
 
 ```bash
-EXCLUDED_SUBNET="192.168.8.0/24"
+LOCAL_ROUTE_EXCEPTIONS="
+192.168.8.0/24 en0
+"
 ```
 
 Notes:
-- Leave it empty (`EXCLUDED_SUBNET=""`) to keep exclusion disabled (default).
-- You may be prompted for `sudo` when exclusion is enabled because route updates require root.
+- Normal `connect` does not modify routes or invoke `sudo`.
+- Use `connect --fix-routes` to repair routes after connecting, or `routes` to repair them separately. These operations may prompt for `sudo` because route updates require root.
+- Leave `LOCAL_ROUTE_EXCEPTIONS=""` to disable local route exceptions entirely.
 - This works best with Local LAN Access enabled in your Cisco profile (Step 8).
 
 ### 10. Connect and disconnect
@@ -143,8 +150,10 @@ From repo directory:
 
 ```bash
 ./vpn-script.sh connect
+./vpn-script.sh connect --fix-routes  # optional route repair; may prompt for sudo
+./vpn-script.sh routes                # repair routes separately; may prompt for sudo
 ./vpn-script.sh disconnect
-./vpn-script.sh update-password
+./vpn-script.sh update-password      # update the Keychain password
 ```
 
 Optional aliases (`~/.zshrc`):
@@ -161,15 +170,50 @@ Reload shell:
 source ~/.zshrc
 ```
 
+With the aliases above, use `vpnc` for a normal connection or `vpnc --fix-routes` to also repair local routes.
+
+## Automatic Reconnect
+
+After a successful `vpnc`, a user-level macOS `launchd` job disconnects and
+reconnects the VPN every 7 hours. It keeps running when the terminal closes.
+Each reconnect reads the password from Keychain and generates a fresh OTP.
+If connection fails, the job retries every 60 seconds until it succeeds.
+
+- `vpnd` stops the job before disconnecting, so it stays disconnected.
+- Running `vpnc` again replaces the existing schedule and resets the 7-hour timer.
+- Automatic reconnect never repairs routes or invokes `sudo`; `--fix-routes`
+  applies only to the initial interactive connection.
+- This job is active for the current login session. After logging out or
+  restarting the Mac, run `vpnc` again to enable it.
+- Sleep, network outages, Keychain access restrictions, and VPN server policy
+  can interrupt connectivity. Reconnecting also briefly interrupts traffic.
+
+Check VPN and scheduler status:
+
+```bash
+./vpn-script.sh status
+```
+
+The schedule and log are stored in
+`~/Library/Application Support/SecureClientAutoLogin/` (`reconnect.plist` and
+`reconnect.log`). This directory is restricted to your user. Scheduling uses
+`/usr/bin/python3` to write the plist; Xcode Command Line Tools provide it.
+
+Run the isolated regression checks (no real VPN or credentials are used):
+
+```bash
+python3 -B -m unittest discover -s tests -v
+```
+
 ## What to Expect on Connect
 
 - Script reads password from Keychain
 - Script generates OTP from `yksofttoken`
-- Script streams Cisco VPN CLI progress directly to the terminal; it does not appear to hang silently.
-- A connection attempt times out after 75 seconds by default (`VPN_CONNECT_TIMEOUT` in `vpn-script.sh`).
-- If the VPN server reports `Login failed`, the script suggests updating the Keychain password
-- If `EXCLUDED_SUBNET` is set, script adds/changes route for that subnet to local interface
-- If exclusion is enabled, you may be prompted for `sudo` to modify route table
+- Script streams Cisco VPN CLI progress and stops stalled login after 75 seconds
+- `update-password` updates the Keychain entry after a password change
+- A successful connection enables automatic reconnect every 7 hours
+- By default, connection skips local route changes and does not invoke `sudo`
+- With `--fix-routes`, script adds/changes local subnet routes and may prompt for `sudo`
 
 ## Verification
 
@@ -191,16 +235,15 @@ Expected: local interface (for example `en0`), not `utun*`.
 
 - `Password not found in keychain`
   - Re-run Step 7 and ensure `USERNAME` + `KEYCHAIN_SERVICE_PASS` match script.
-- `Login failed`
-  - If your password changed, run `./vpn-script.sh update-password` and save the new password to Keychain.
-
 - `YubiKey token tool not found`
   - Confirm `YUBIKEY_PATH` points to executable `yksofttoken/yksoft`.
+- `Login failed`
+  - If your password changed, run `./vpn-script.sh update-password` and save it to Keychain.
 - `route: must be root`
-  - This only applies when `EXCLUDED_SUBNET` is enabled.
-  - Re-run connect and approve `sudo` prompt.
+  - This applies to `connect --fix-routes` and `routes`.
+  - Re-run the route repair command and approve the `sudo` prompt.
 - `Subnet route looks correct, but NAS IP still goes to utun`
-  - This only applies when `EXCLUDED_SUBNET` is enabled.
+  - This applies when local route exceptions are configured.
   - Check with: `route -n get 192.168.8.197`
   - If it shows `interface: utun*`, run:
     `sudo route -n delete -host 192.168.8.197`
